@@ -1,0 +1,5 @@
+[project]
+name = "summer Practice"
+
+[tool.pyside6-project]
+files = ["main.py", "main.qml"]
