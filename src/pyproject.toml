@@ -2,4 +2,4 @@
 name = "summer Practice"
 
 [tool.pyside6-project]
-files = ["main.py", "main.qml"]
+files = ["main.py", "test.py", "SQLscripts/database.py"]
