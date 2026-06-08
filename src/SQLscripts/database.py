@@ -1,6 +1,7 @@
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from string import string
 
 class DataBase:
     def __init__(self, catalogData="indexer.db"):
@@ -109,7 +110,7 @@ class DataBase:
                     return True
 
                 return False
-        except UnicodeDecoderError:
+        except UnicodeDecodeError:
             return True
         except Exception as e:
             print(f"Ошибка при чтении файла {filePath}: {e}")
