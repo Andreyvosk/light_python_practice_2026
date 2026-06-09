@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from string import string
+import EngineScript.FileClass as fc
 
 class DataBase:
     def __init__(self, catalogData="indexer.db"):
@@ -63,16 +63,34 @@ class DataBase:
         return self.__mainCursor.fetchone()
 
 
+    def getAllExtension(self):
+
+        sqlRequestText = "SELECT * FROM formats"
+
+        self.__mainCursor.execute(sqlRequestText)
+
+        return self.__mainCursor.fetchone()
+
+
     ''' Добавление данных в базу '''
-    def addNewFile(self, fileName, filePath):
-        sqlFormatText = "INSERT INTO files (C_FILE_NAME, C_CHANGE_DATE, C_CREATE_DATE, C_FORMAT_ID) VALUES (?, ?, ?, ?);"
+    def addNewFile(self, file):
+        if isinstance(file, fc.File):
 
-        formatName = Path(fileName).suffix
-        currentTimeString = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            sqlFormatText = "INSERT INTO files (C_FILE_NAME, C_CHANGE_DATE, C_CREATE_DATE, C_FORMAT_ID) VALUES (?, ?, ?, ?);"
 
-        self.__mainCursor.execute(sqlFormatText, (fileName, currentTimeString, currentTimeString, self.__findFormatID(formatName, filePath)))
+            formatName = file.getExtension()
+            filePath = file.getFullName()
+            currentTimeString = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-        self.__mainCursor.commit()
+            print(f"Файл: {file.getName()}\t|\tформат файла: {formatName}")
+
+            self.__mainCursor.execute(sqlFormatText, (file.getName(), currentTimeString, currentTimeString, self.__findFormatID(formatName, filePath)[0]))
+
+            self.__mainConnect.commit()
+
+            return True
+        else:
+            return False
 
     def addNewFormat(self, formatName, filePath):
         sqlFormatText = "INSERT INTO formats (F_NAME, F_ISBINARY) VALUES (?, ?);"
@@ -84,7 +102,7 @@ class DataBase:
 
     ''' Запрсы '''
     def __findFormatID(self, formatName, filePath):
-        if isinstance(formatName, string):
+        if isinstance(formatName, str):
             sqlRequest = "SELECT F_ID FROM formats WHERE F_NAME = ? LIMIT 1;"
             self.__mainCursor.execute(sqlRequest, (formatName,))
 
@@ -92,7 +110,7 @@ class DataBase:
 
             if result is None:
                 self.addNewFormat(formatName, filePath)
-                self.findFormatID(formatName, filePath)
+                return self.__findFormatID(formatName, filePath)
             else:
                 return result
 

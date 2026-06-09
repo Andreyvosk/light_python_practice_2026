@@ -35,7 +35,7 @@ class Engine:
             self.__workPath = path
 
         folder = Path(path)
-        fileList = [str(f) for f in folder.rglob('*') if f.is_file()]
+        fileList = [f for f in folder.rglob('*') if f.is_file()]
 
         return fileList
 
@@ -45,6 +45,7 @@ class Engine:
         fileListData = []
 
         for file in fileList:
+            print(file, flush=True)
             statInfo = file.stat()
             fileName = file.name
             extension = file.suffix
@@ -54,12 +55,17 @@ class Engine:
             currentFile = fc.File(fileName, str(file.resolve()), sizeBytes, extension, modified)
 
             fileListData.append(currentFile)
+            print("\033[K", end="")
 
         return fileListData
 
 
     def __saveFilesInBase(self, fileList):
-        pass # переделать добавление файлов в базу
+        for file in fileList:
+            if(self.__dataBase.addFile(file)):
+                print(f"Файл: {file.getName} \t успешно добавлен в систему")
+            else:
+                print(f"!!Файл: {file.getName} \t НЕ ДОБАВЛЕН")
 
 
     ''' Функции для индексации '''
@@ -70,8 +76,14 @@ class Engine:
         print("=====Успешное чтение файла=====")
 
         print("=====Создание классов файлов=====")
-        fileInfo = self.__readInfo(fileList)
+        fileInfo = self.__readInfoFiles(fileList)
         print("=====Успешно созданы классы файлов=====")
+
+        print("=====Добавление файлов в базу...======")
+        for file in fileInfo:
+            self.__dataBase.addNewFile(file)
+        print("=====Файлы успешно добавлены в базу")
+
 
 
 

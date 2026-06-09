@@ -1,7 +1,7 @@
 class File:
     def __init__(self, name, fullName, size, extension, modified):
         self.__name = name
-        self.__fullName
+        self.__fullName = fullName
         self.__size = size
         self.__extension = extension
         self.__modified = modified
