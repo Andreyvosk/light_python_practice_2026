@@ -39,3 +39,8 @@ class File:
     def getDataFile(self):
         return self.__fileData
 
+
+    ''' Вспомогательные функции '''
+    def display(self):
+        print(self.__name)
+

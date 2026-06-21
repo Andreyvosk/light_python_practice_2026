@@ -34,6 +34,7 @@ class DataBase:
                 C_CHANGE_DATE DATETIME NOT NULL,
                 C_CREATE_DATE DATETIME NOT NULL,
                 C_FORMAT_ID INTEGER,
+                C_HASH_SUM VARCHAR(64) NOT NULL,
                 FOREIGN KEY (C_FORMAT_ID) REFERENCES formats(F_ID)
                 );
             ''')
@@ -82,15 +83,19 @@ class DataBase:
             filePath = file.getFullName()
             currentTimeString = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-            print(f"Файл: {file.getName()}\t|\tформат файла: {formatName}")
+            #print(f"Файл: {file.getName()}\t|\tформат файла: {formatName}")
 
-            self.__mainCursor.execute(sqlFormatText, (file.getName(), currentTimeString, currentTimeString, self.__findFormatID(formatName, filePath)[0]))
+            fileFormat = self.__findFormatID(formatName, filePath)
+
+            if fileFormat != -1:
+                self.__mainCursor.execute(sqlFormatText, (file.getName(), currentTimeString, currentTimeString, fileFormat))
 
             self.__mainConnect.commit()
 
             return True
         else:
             return False
+
 
     def addNewFormat(self, formatName, filePath):
         sqlFormatText = "INSERT INTO formats (F_NAME, F_ISBINARY) VALUES (?, ?);"
@@ -112,10 +117,19 @@ class DataBase:
                 self.addNewFormat(formatName, filePath)
                 return self.__findFormatID(formatName, filePath)
             else:
-                return result
+                return result[0]
 
         else:
             return -1
+
+
+    def requestAllFiles(self):
+        sqlRequest = "SELECT f.*, fm.F_NAME, fm.F_ISBINARY FROM files f LEFT JOIN formats fm ON f.C_FORMAT_ID = fm.F_ID;"
+        self.__mainCursor.execute(sqlRequest)
+
+        result = self.__mainCursor.fetchall()
+
+        return result
 
 
     ''' Вспомогательные функции '''
@@ -133,7 +147,6 @@ class DataBase:
         except Exception as e:
             print(f"Ошибка при чтении файла {filePath}: {e}")
             return False
-
 
 
 

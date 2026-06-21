@@ -1,8 +1,10 @@
 import os
 import sys
+import json
 from pathlib import Path
 from datetime import datetime
 import EngineScript.FileClass as fc
+import EngineScript.LoadingAnimation as la
 
 
 class Engine:
@@ -15,6 +17,18 @@ class Engine:
 
         self.__dataBase = dataBase
 
+        self.__cashSearchFiles = []
+
+        self.__animation = la.LoadingAnimation()
+
+        self.__CONFIG_FILE_NAME = "config.json"
+        self.__DEFAULT_CONFIG = {
+            "countStarts": 0
+        }
+        self.__settings = self.__DEFAULT_CONFIG
+
+        self.__createConfig()
+
     ''' getters '''
     def getLocalPath(self):
         return self.__localPath
@@ -22,6 +36,10 @@ class Engine:
 
     def getWorkPath(self):
         return self.__workPath
+
+
+    def getCashSearchFiles(self):
+        return self.__cashSearchFiles
 
 
     ''' setters '''
@@ -45,7 +63,7 @@ class Engine:
         fileListData = []
 
         for file in fileList:
-            print(file, flush=True)
+            #print(file, flush=True)
             statInfo = file.stat()
             fileName = file.name
             extension = file.suffix
@@ -55,7 +73,7 @@ class Engine:
             currentFile = fc.File(fileName, str(file.resolve()), sizeBytes, extension, modified)
 
             fileListData.append(currentFile)
-            print("\033[K", end="")
+            #print("\033[K", end="")
 
         return fileListData
 
@@ -68,21 +86,44 @@ class Engine:
                 print(f"!!Файл: {file.getName} \t НЕ ДОБАВЛЕН")
 
 
+    def __createConfig(self):
+        if not os.path.exists(self.__CONFIG_FILE_NAME):
+            print("=====Создание файла конфигурации=====")
+
+            with open(self.__CONFIG_FILE_NAME, "w", encoding='utf-8') as f:
+                json.dump(self.__DEFAULT_CONFIG, f, indent=4, ensure_ascii=False)
+
+        else:
+            with open(self.__CONFIG_FILE_NAME, 'r', encoding='utf-8') as f:
+                print("=====Загрузка настроек=====")
+                self.__settings = json.load(f)
+
     ''' Функции для индексации '''
     def readAndSaveFileIndexes(self, path):
 
         print("=====Чтение файлов каталога=====")
+        self.__animation.start()
         fileList = self.__readFiles(path)
-        print("=====Успешное чтение файла=====")
+        self.__animation.stop()
 
         print("=====Создание классов файлов=====")
+        self.__animation.start()
         fileInfo = self.__readInfoFiles(fileList)
-        print("=====Успешно созданы классы файлов=====")
+        self.__animation.stop()
 
         print("=====Добавление файлов в базу...======")
+        self.__animation.start()
         for file in fileInfo:
+            file.display()
             self.__dataBase.addNewFile(file)
-        print("=====Файлы успешно добавлены в базу")
+        self.__animation.stop()
+
+
+
+
+
+
+
 
 
 
