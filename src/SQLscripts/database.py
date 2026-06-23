@@ -1,11 +1,16 @@
 import sqlite3
 from datetime import datetime
+import os
 from pathlib import Path
 import EngineScript.FileClass as fc
 
 class DataBase:
     def __init__(self, catalogData="indexer.db"):
-        self.__catalogDataBase = catalogData
+
+        CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+        self.__catalogDataBase = os.path.join(CURRENT_DIR, catalogData)
+
         self.__mainConnect = sqlite3.connect(self.__catalogDataBase)
 
         self.__mainCursor = self.__mainConnect.cursor();
@@ -31,6 +36,7 @@ class DataBase:
             CREATE TABLE IF NOT EXISTS files (
                 C_ID INTEGER PRIMARY KEY AUTOINCREMENT,
                 C_FILE_NAME TEXT NOT NULL,
+                C_FULL_NAME TEXT NOT NULL,
                 C_CHANGE_DATE DATETIME NOT NULL,
                 C_CREATE_DATE DATETIME NOT NULL,
                 C_FORMAT_ID INTEGER,
@@ -77,7 +83,7 @@ class DataBase:
     def addNewFile(self, file):
         if isinstance(file, fc.File):
 
-            sqlFormatText = "INSERT INTO files (C_FILE_NAME, C_CHANGE_DATE, C_CREATE_DATE, C_FORMAT_ID) VALUES (?, ?, ?, ?);"
+            sqlFormatText = "INSERT INTO files (C_FILE_NAME, C_FULL_NAME, C_CHANGE_DATE, C_CREATE_DATE, C_FORMAT_ID, C_HASH_SUM) VALUES (?, ?, ?, ?, ?, ?);"
 
             formatName = file.getExtension()
             filePath = file.getFullName()
@@ -88,7 +94,7 @@ class DataBase:
             fileFormat = self.__findFormatID(formatName, filePath)
 
             if fileFormat != -1:
-                self.__mainCursor.execute(sqlFormatText, (file.getName(), currentTimeString, currentTimeString, fileFormat))
+                self.__mainCursor.execute(sqlFormatText, (file.getName(), str(file.getFullName()), currentTimeString, currentTimeString, fileFormat, file.getHash()))
 
             self.__mainConnect.commit()
 
@@ -132,6 +138,14 @@ class DataBase:
         return result
 
 
+    def __deleteFile(self, hashToDelete):
+        sqlDelete = "DELETE FROM files WHERE C_HASH_SUM = ?"
+
+        self.__mainCursor.execute(sqlDelete, (hashToDelete,))
+
+        self.__mainConnect.commit()
+
+
     ''' Вспомогательные функции '''
     def __isBinaryFile(self, filePath):
         try:
@@ -147,6 +161,42 @@ class DataBase:
         except Exception as e:
             print(f"Ошибка при чтении файла {filePath}: {e}")
             return False
+
+
+    def __findFilesInBase(self, fileList):
+        if not fileList:
+            return []
+
+        batchList = [file.getHash() for file in fileList]
+        placeholders = ",".join(["?"] * len(fileList))
+
+        sqlRequestText = (
+            f"SELECT C_HASH_SUM FROM files WHERE C_HASH_SUM IN ({placeholders})"
+        )
+
+        self.__mainCursor.execute(sqlRequestText, batchList)
+        rows = self.__mainCursor.fetchall()
+
+        existing_hashes = {row[0] for row in rows}
+
+        resultList = []
+
+        for file in fileList:
+            if file.getHash() not in existing_hashes:
+                resultList.append(file)
+
+        return resultList
+
+
+    def findFiles(self, fileList):
+        resultFileList = []
+
+        for i in range(len(fileList)):
+            currentList = fileList[i]
+            resultFileList.extend(self.__findFilesInBase(currentList))
+
+        return resultFileList
+
 
 
 

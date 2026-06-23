@@ -1,10 +1,11 @@
 class File:
-    def __init__(self, name, fullName, size, extension, modified):
+    def __init__(self, name, fullName, size, extension, modified, hash):
         self.__name = name
         self.__fullName = fullName
         self.__size = size
         self.__extension = extension
         self.__modified = modified
+        self.__hash = hash
 
         self.__fileData = {
             "name" : self.__name,
@@ -38,6 +39,10 @@ class File:
 
     def getDataFile(self):
         return self.__fileData
+
+
+    def getHash(self):
+        return self.__hash
 
 
     ''' Вспомогательные функции '''

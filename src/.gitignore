@@ -5,3 +5,4 @@ Python_3_12_3venv
 test.py
 __pycache__
 indexer.db
+config.json
