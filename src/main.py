@@ -1,6 +1,6 @@
-from test import Test
+import TerminalApp.TerminalApp as ta
 
 if __name__ == "__main__":
-    test = Test()
-    test.start()
+    myApp = ta.TerminalApp()
+    myApp.start()
     pass

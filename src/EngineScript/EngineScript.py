@@ -65,7 +65,7 @@ class Engine:
 
         return fileList
 
-    def __readInfoFiles(self, fileList):
+    def __readInfoFiles(self, fileList, format):
 
         fileListData = []
 
@@ -81,7 +81,8 @@ class Engine:
 
             currentFile = fc.File(fileName, fullPath, sizeBytes, extension, modified, hash)
 
-            fileListData.append(currentFile)
+            if extension == format or format == "":
+                fileListData.append(currentFile)
             #print("\033[K", end="")
 
         fileListForFind = [fileListData[i : i + self.__settings["batchSize"]] for i in range(0, len(fileListData), self.__settings["batchSize"])]
@@ -133,7 +134,7 @@ class Engine:
 
 
     ''' Функции для индексации '''
-    def readAndSaveFileIndexes(self, path):
+    def readAndSaveFileIndexes(self, path, format):
 
         print("=====Чтение файлов каталога=====")
         self.__animation.start()
@@ -142,7 +143,7 @@ class Engine:
 
         print("=====Создание классов файлов=====")
         self.__animation.start()
-        fileInfo = self.__readInfoFiles(fileList)
+        fileInfo = self.__readInfoFiles(fileList, format)
         self.__animation.stop()
 
         print("=====Добавление файлов в базу...======")

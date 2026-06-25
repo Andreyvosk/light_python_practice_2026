@@ -198,6 +198,122 @@ class DataBase:
         return resultFileList
 
 
+    def findFile(self, fileName):
+        requsetText = "SELECT C_FULL_NAME FROM files WHERE C_FILE_NAME = fileName"
+
+        self.__mainCursor.execute(requsetText, fileName)
+        return self.__mainCursor.fetchall()
+
+
+    def removeDuplicates(self):
+
+        try:
+
+            sql_delete_by_hash = '''
+            DELETE FROM files
+            WHERE C_ID NOT IN (
+                SELECT MIN(C_ID)
+                FROM files
+                GROUP BY C_HASH_SUM
+            );
+            '''
+            self.__mainCursor.execute(sql_delete_by_hash)
+            deleted_hashes = self.__mainCursor.rowcount
+
+            sql_delete_by_name = '''
+            DELETE FROM files
+            WHERE C_ID NOT IN (
+                SELECT MIN(C_ID)
+                FROM files
+                GROUP BY C_FILE_NAME
+            );
+            '''
+            self.__mainCursor.execute(sql_delete_by_name)
+            deleted_names = self.__mainCursor.rowcount
+
+            self.__mainConnect.commit()
+
+            print(f"[Очистка] Удалено дубликатов по хэшу: {deleted_hashes}")
+            print(f"[Очистка] Удалено дубликатов по имени: {deleted_names}")
+            return deleted_hashes + deleted_names
+
+        except sqlite3.Error as e:
+            print(f"Ошибка при удалении дубликатов: {e}")
+            self.__mainConnect.rollback() # Откатываем изменения в случае сбоя
+            return 0
+
+
+    def createBackup(self, backup_dir="backups"):
+        if not os.path.exists(backup_dir):
+            os.makedirs(backup_dir)
+
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        backup_filename = f"backup_indexer_{timestamp}.db"
+        backup_path = os.path.join(backup_dir, backup_filename)
+
+        try:
+            backup_connect = sqlite3.connect(backup_path)
+
+            with backup_connect:
+                self.__mainConnect.backup(backup_connect)
+
+            backup_connect.close()
+            print(f"[Бэкап] База данных успешно скопирована в: {backup_path}")
+            return backup_path
+        except sqlite3.Error as e:
+            print(f"[Бэкап] Ошибка при создании копии: {e}")
+            return None
+
+
+    def compareWithBackup(self):
+        if not os.path.exists(self.__catalogDataBase):
+            print(f"[Сравнение] Файл бэкапа не найден: {self.__catalogDataBase}")
+            return
+
+        try:
+            self.__mainCursor.execute(f"ATTACH DATABASE ? AS backup_db;", (self.__catalogDataBase,))
+
+            query_added = '''
+                SELECT C_FILE_NAME, C_FULL_NAME FROM main.files
+                EXCEPT
+                SELECT C_FILE_NAME, C_FULL_NAME FROM backup_db.files;
+            '''
+            self.__mainCursor.execute(query_added)
+            added_files = self.__mainCursor.fetchall()
+
+            query_removed = '''
+                SELECT C_FILE_NAME, C_FULL_NAME FROM backup_db.files
+                EXCEPT
+                SELECT C_FILE_NAME, C_FULL_NAME FROM main.files;
+            '''
+            self.__mainCursor.execute(query_removed)
+            removed_files = self.__mainCursor.fetchall()
+
+            self.__mainCursor.execute("DETACH DATABASE backup_db;")
+
+            print("\n===== РЕЗУЛЬТАТЫ СРАВНЕНИЯ С БЭКАПОМ =====")
+            if not added_files and not removed_files:
+                print("Базы данных абсолютно идентичны.")
+            else:
+                if added_files:
+                    print(f"\nНовые файлы (добавлены после бэкапа) — {len(added_files)} шт:")
+                    for file in added_files:
+                        print(f" [+] {file[0]} ({file[1]})")
+
+                if removed_files:
+                    print(f"\nИсчезнувшие файлы (удалены после бэкапа) — {len(removed_files)} шт:")
+                    for file in removed_files:
+                        print(f" [-] {file[0]} ({file[1]})")
+            print("==========================================\n")
+
+        except sqlite3.Error as e:
+            print(f"[Сравнение] Ошибка SQL при сравнении баз: {e}")
+            try:
+                self.__mainCursor.execute("DETACH DATABASE backup_db;")
+            except:
+                pass
+
+
 
 
 
