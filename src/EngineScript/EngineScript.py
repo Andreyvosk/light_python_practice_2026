@@ -42,6 +42,10 @@ class Engine:
         return self.__localPath
 
 
+    def getSettigs(self):
+        return self.__settings
+
+
     def getWorkPath(self):
         return self.__workPath
 
@@ -57,13 +61,24 @@ class Engine:
 
     ''' Вспомогательные функции '''
     def __readFiles(self, path):
-        if not(path is None or path == ""):
-            self.__workPath = path
+        if path not in (None, ""):
+            self.__workPath = Path(path)
+        elif not hasattr(self, "__workPath") or self.__workPath is None:
+            self.__workPath = Path.cwd()
 
-        folder = Path(path)
-        fileList = [f for f in folder.rglob('*') if f.is_file()]
+        all_files = []
 
-        return fileList
+        def _find_recursive(current_dir):
+            for item in current_dir.iterdir():
+                if item.is_file():
+                    all_files.append(item)
+                elif item.is_dir():
+                    _find_recursive(item)
+
+        _find_recursive(self.__workPath)
+
+        return all_files
+
 
     def __readInfoFiles(self, fileList, format):
 
@@ -132,6 +147,29 @@ class Engine:
             json.dump(self.__settings, f, indent=4, ensure_ascii=False)
 
 
+    def comparePaths(self, firstPath, secondPath):
+
+        if os.path.exists(firstPath) and os.path.exists(secondPath):
+            firstFileList = self.__readFiles(firstPath)
+            secondFileList = self.__readFiles(secondPath)
+
+            print(f"Путь: {firstPath} - основной | Путь сравнения: {secondPath}")
+
+            for file in firstFileList:
+                for secFile in secondFileList:
+                    if file.resolve() == secFile.resolve():
+                        if self.__getFileSha256(file.resolve()) != self.__getFileSha256(secFile.resolve()):
+                            print(f"[Изменен] Файл: {file.resolve()}")
+                            secondFileList.remove(secFile)
+                        continue
+                    if self.__getFileSha256(file.resolve()) == self.__getFileSha256(secFile.resolve()):
+                        secondFileList.remove(secFile)
+                        print(f"[Переименован] Файл: {file.name}")
+
+            if len(secondFileList) > 0:
+                for file in secondFileList:
+                    print(f"[Удален] Файл: {file.name}")
+
 
     ''' Функции для индексации '''
     def readAndSaveFileIndexes(self, path, format):
@@ -151,7 +189,9 @@ class Engine:
         for file in fileInfo:
             file.display()
             self.__dataBase.addNewFile(file)
+        self.__dataBase.removeDuplicates()
         self.__animation.stop()
+
 
 
 

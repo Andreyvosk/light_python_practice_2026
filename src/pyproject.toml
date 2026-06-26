@@ -3,7 +3,6 @@ name = "summer Practice"
 
 [tool.pyside6-project]
 files = ["main.py",
-    "test.py",
     "SQLscripts/database.py",
     "EngineScript/EngineScript.py",
     "EngineScript/FileClass.py",

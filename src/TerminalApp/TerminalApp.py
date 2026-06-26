@@ -1,6 +1,6 @@
 import EngineScript.EngineScript as es
 import SQLscripts.database as db
-import sys
+import argparse
 
 class TerminalApp:
     def __init__(self):
@@ -8,84 +8,90 @@ class TerminalApp:
 
         self.__mainEngine = es.Engine(self.__mainDataBase)
 
+        self.__parser = argparse.ArgumentParser()
+
+        self.__setArg()
+
+
+    def __setArg(self):
+        self.__parser.add_argument(
+            "-f",
+            "--filter",
+            dest="filter",
+            type=str,
+            default="",
+            help="Фильтр для поиска файлов"
+        )
+
+        self.__parser.add_argument(
+            "-d",
+            "--dir",
+            dest="dir_path",
+            type=str,
+            help="путь к рабочей дирректории"
+        )
+
+        self.__parser.add_argument(
+            "-b",
+            "--backup",
+            dest="backup",
+            type=str,
+            default="",
+            help="Путь к файлу бэкапа"
+        )
+
+        self.__parser.add_argument(
+            "-c",
+            "--compare",
+            dest="compare",
+            type=str,
+            nargs=2,
+            default="",
+            help="Путь к директории для сравнения файлов"
+        )
+
+        self.__parser.add_argument(
+            "-i",
+            "-info",
+            dest="info",
+            action='store_true',
+            help="Информация"
+        )
+
 
     def start(self):
-        print("Программа успешно запустилась, рабочий путь:", str(self.__mainEngine.getWorkPath()))
 
-        answer = input("Перечитать файлы? (все/фильтр)")
+        args = self.__parser.parse_args()
+        filter = ""
+        dir = ""
+        flagStart = False
 
-        if answer.strip() == "все":
-            self.__mainEngine.readAndSaveFileIndexes("", "")
-        if answer.strip() == "фильтр":
-            format = input("Введите формат читаемых файлов: ")
-            self.__mainEngine.readAndSaveFileIndexes("", format)
+        if args.filter != "":
+            filter = args.filter
 
-        try:
-            while True:
-                line = sys.stdin.readline()
-                if not line:
-                    break
-                self.__completeCommand(line.strip())
-        except KeyboardInterrupt:
-            print("Программа неожиданно завершиласб")
+        if args.dir_path != None:
+            flagStart = True
+            dir = args.dir_path
+            print(f"Рабочая папка: {args.dir_path}")
 
+            self.__mainEngine.readAndSaveFileIndexes(dir, filter)
 
-    def __completeCommand(self, line):
-        if line == "help":
-            self.__help()
-        if line == "reserch":
-            pass
-        if line == "showall":
-            self.__showall()
-        if "find" in line:
-            self.__findFile()
-        if line == "deldup":
-            self.__deldup()
-        if line == "backup":
-            self.__backup()
-        if line == "comapre":
-            self.__compare()
+        if args.backup != "":
+            self.__mainDataBase.createBackup(args.backup)
+            flagStart = True
 
-    ''' Команды для выполнения в терминале '''
-    def __help(self):
-        print('''
-        ===== СПРАВОЧНАЯ ИНФОРМАЦИЯ О ДОСТУПНЫХ КОММАНДАХ =====
-        1. help - вызов справочной информации.
-        2. reserch - перечитать файлы текущего каталога.
-        3. showall - показать все файлы БД.
-        4. find - Найти путь файла. (find [Имя файла])
-        5. deldup - Удалить дубликаты.
-        ''')
+        if args.compare:
+            firstDir, secondDir = args.compare
+            self.__mainEngine.comparePaths(firstDir, secondDir)
+            flagStart = True
+
+        if args.info:
+            flagStart = True
+            print(self.__mainEngine.getSettigs())
+
+        if flagStart != True:
+            print("Путь не указан, сканирование отменено")
 
 
-    def __showall(self):
-        files = self.__mainDataBase.requestAllFiles()
-
-        for file in files:
-            print(f"{file[1]}                           {file[3]}                             {file[7]}")
-
-
-    def __findFile(self, line):
-        fileName = line[6::]
-
-        result = self.__mainDataBase.findFile(fileName)
-
-        if len(result) < 1:
-            print("Этот файл не был проиндексирован")
-
-        for file in result:
-            print(f"Путь к файлу: {file[0]}")
-
-
-    def __deldup(self):
-        self.__mainDataBase.removeDuplicates()
-
-
-    def __backup(self):
-        self.__mainDataBase.createBackup()
-
-
-    def __compare(self):
-        self.__mainDataBase.compareWithBackup()
 
 

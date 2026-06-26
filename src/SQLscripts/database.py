@@ -233,8 +233,6 @@ class DataBase:
 
             self.__mainConnect.commit()
 
-            print(f"[Очистка] Удалено дубликатов по хэшу: {deleted_hashes}")
-            print(f"[Очистка] Удалено дубликатов по имени: {deleted_names}")
             return deleted_hashes + deleted_names
 
         except sqlite3.Error as e:
@@ -263,55 +261,6 @@ class DataBase:
         except sqlite3.Error as e:
             print(f"[Бэкап] Ошибка при создании копии: {e}")
             return None
-
-
-    def compareWithBackup(self):
-        if not os.path.exists(self.__catalogDataBase):
-            print(f"[Сравнение] Файл бэкапа не найден: {self.__catalogDataBase}")
-            return
-
-        try:
-            self.__mainCursor.execute(f"ATTACH DATABASE ? AS backup_db;", (self.__catalogDataBase,))
-
-            query_added = '''
-                SELECT C_FILE_NAME, C_FULL_NAME FROM main.files
-                EXCEPT
-                SELECT C_FILE_NAME, C_FULL_NAME FROM backup_db.files;
-            '''
-            self.__mainCursor.execute(query_added)
-            added_files = self.__mainCursor.fetchall()
-
-            query_removed = '''
-                SELECT C_FILE_NAME, C_FULL_NAME FROM backup_db.files
-                EXCEPT
-                SELECT C_FILE_NAME, C_FULL_NAME FROM main.files;
-            '''
-            self.__mainCursor.execute(query_removed)
-            removed_files = self.__mainCursor.fetchall()
-
-            self.__mainCursor.execute("DETACH DATABASE backup_db;")
-
-            print("\n===== РЕЗУЛЬТАТЫ СРАВНЕНИЯ С БЭКАПОМ =====")
-            if not added_files and not removed_files:
-                print("Базы данных абсолютно идентичны.")
-            else:
-                if added_files:
-                    print(f"\nНовые файлы (добавлены после бэкапа) — {len(added_files)} шт:")
-                    for file in added_files:
-                        print(f" [+] {file[0]} ({file[1]})")
-
-                if removed_files:
-                    print(f"\nИсчезнувшие файлы (удалены после бэкапа) — {len(removed_files)} шт:")
-                    for file in removed_files:
-                        print(f" [-] {file[0]} ({file[1]})")
-            print("==========================================\n")
-
-        except sqlite3.Error as e:
-            print(f"[Сравнение] Ошибка SQL при сравнении баз: {e}")
-            try:
-                self.__mainCursor.execute("DETACH DATABASE backup_db;")
-            except:
-                pass
 
 
 
