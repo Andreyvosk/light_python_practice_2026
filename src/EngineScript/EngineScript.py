@@ -156,19 +156,35 @@ class Engine:
             print(f"Путь: {firstPath} - основной | Путь сравнения: {secondPath}")
 
             for file in firstFileList:
+                relFirst = file.relative_to(firstPath)
+                FirstHash = self.__getFileSha256(file)
+
+                matched = False
                 for secFile in secondFileList:
-                    if file.resolve() == secFile.resolve():
-                        if self.__getFileSha256(file.resolve()) != self.__getFileSha256(secFile.resolve()):
-                            print(f"[Изменен] Файл: {file.resolve()}")
-                            secondFileList.remove(secFile)
-                        continue
-                    if self.__getFileSha256(file.resolve()) == self.__getFileSha256(secFile.resolve()):
+                    relSecond = secFile.relative_to(secondPath)
+                    secHash = self.__getFileSha256(secFile)
+
+                    if relFirst == relSecond:
+                        if FirstHash != secHash:
+                            print(f"[Изменен] Файл: {relFirst}")
+
                         secondFileList.remove(secFile)
+                        matched = True
+                        break
+
+                    if not matched and FirstHash == secHash:
+                        secondFileList.remove(secFile)
+                        matched = True
                         print(f"[Переименован] Файл: {file.name}")
+                        break
 
             if len(secondFileList) > 0:
                 for file in secondFileList:
                     print(f"[Удален] Файл: {file.name}")
+
+        else:
+            print("Один или оба путей не существуют")
+            return
 
 
     ''' Функции для индексации '''
