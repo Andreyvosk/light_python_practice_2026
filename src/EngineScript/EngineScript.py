@@ -175,7 +175,7 @@ class Engine:
                     if not matched and FirstHash == secHash:
                         secondFileList.remove(secFile)
                         matched = True
-                        print(f"[Переименован] Файл: {file.name}")
+                        print(f"[Новый] Файл: {file.name}")
                         break
 
             if len(secondFileList) > 0:
