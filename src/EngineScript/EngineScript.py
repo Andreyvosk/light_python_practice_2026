@@ -128,12 +128,12 @@ class Engine:
 
     def __getFileSha256(self, filePath):
         try:
+            hasher = hashlib.sha256() 
+
             with open(filePath, 'rb') as f:
                 while chunk := f.read(8192):
-                    self.__hasher.update(chunk)
-
-            return self.__hasher.hexdigest()
-
+                    hasher.update(chunk)
+            return hasher.hexdigest()
         except FileNotFoundError:
             return "Файл не найден"
 
@@ -147,44 +147,91 @@ class Engine:
             json.dump(self.__settings, f, indent=4, ensure_ascii=False)
 
 
-    def comparePaths(self, firstPath, secondPath):
+    def comparePaths(self, firstPath, secondPath, extension_filter):
+        p1 = Path(firstPath).resolve()
+        p2 = Path(secondPath).resolve()
 
-        if os.path.exists(firstPath) and os.path.exists(secondPath):
-            firstFileList = self.__readFiles(firstPath)
-            secondFileList = self.__readFiles(secondPath)
+        print(f"Путь: {p1} - основной | Путь сравнения: {p2}")
 
-            print(f"Путь: {firstPath} - основной | Путь сравнения: {secondPath}")
-
-            for file in firstFileList:
-                relFirst = file.relative_to(firstPath)
-                FirstHash = self.__getFileSha256(file)
-
-                matched = False
-                for secFile in secondFileList:
-                    relSecond = secFile.relative_to(secondPath)
-                    secHash = self.__getFileSha256(secFile)
-
-                    if relFirst == relSecond:
-                        if FirstHash != secHash:
-                            print(f"[Изменен] Файл: {relFirst}")
-
-                        secondFileList.remove(secFile)
-                        matched = True
-                        break
-
-                    if not matched and FirstHash == secHash:
-                        secondFileList.remove(secFile)
-                        matched = True
-                        print(f"[Новый] Файл: {file.name}")
-                        break
-
-            if len(secondFileList) > 0:
-                for file in secondFileList:
-                    print(f"[Удален] Файл: {file.name}")
-
-        else:
-            print("Один или оба путей не существуют")
+        if not (p1.exists() and p1.is_dir() and p2.exists() and p2.is_dir()):
+            print("Один или оба путей не существуют или не являются директориями")
             return
+
+        ext = None
+        if extension_filter and extension_filter != "":
+            ext = extension_filter.lower()
+            if not ext.startswith("."):
+                ext = "." + ext
+
+        def filter_by_extension(file_list, ext_filter):
+            if ext_filter is None:
+                return file_list
+            return [f for f in file_list if f.suffix.lower() == ext_filter]
+
+        firstFileList = self.__readFiles(p1)
+        secondFileList = self.__readFiles(p2)
+
+        firstFileList = filter_by_extension(firstFileList, ext)
+        secondFileList = filter_by_extension(secondFileList, ext)
+
+        if ext:
+            print(f"Фильтр по расширению: {ext}")
+
+        matched_in_second = []
+
+        for file in firstFileList:
+            try:
+                relFirst = file.relative_to(p1)
+            except ValueError:
+                continue
+
+            firstHash = self.__getFileSha256(file)
+            if firstHash is None:
+                continue
+
+            matched = False
+            for secFile in secondFileList:
+                try:
+                    relSecond = secFile.relative_to(p2)
+                except ValueError:
+                    continue
+
+                secHash = self.__getFileSha256(secFile)
+                if secHash is None:
+                    continue
+
+                if relFirst == relSecond:
+                    if firstHash != secHash:
+                        print(f"[Изменен] Файл: {relFirst}")
+                    else:
+                        print(f"[Без изменений] Файл: {relFirst}")
+                    matched = True
+                    matched_in_second.append(secFile)
+                    break
+
+            if not matched:
+                for secFile in secondFileList:
+                    if secFile in matched_in_second:
+                        continue
+                    secHash = self.__getFileSha256(secFile)
+                    if secHash is None:
+                        continue
+
+                    if firstHash == secHash:
+                        matched = True
+                        matched_in_second.append(secFile)
+                        break
+
+            if not matched:
+                print(f"[Новый (есть в первой, нет во второй)] Файл: {file.name} ({relFirst})")
+
+        for secFile in secondFileList:
+            if secFile not in matched_in_second:
+                try:
+                    rel = secFile.relative_to(p2)
+                    print(f"[Удален (есть во второй, нет в первой)] Файл: {rel}")
+                except ValueError:
+                    print(f"[Удален] Файл: {secFile.name}")
 
 
     ''' Функции для индексации '''
