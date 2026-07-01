@@ -203,8 +203,7 @@ class Engine:
                 if relFirst == relSecond:
                     if firstHash != secHash:
                         print(f"[Изменен] Файл: {relFirst}")
-                    else:
-                        print(f"[Без изменений] Файл: {relFirst}")
+
                     matched = True
                     matched_in_second.append(secFile)
                     break

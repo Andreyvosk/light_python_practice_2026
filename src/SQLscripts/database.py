@@ -44,6 +44,37 @@ class DataBase:
                 FOREIGN KEY (C_FORMAT_ID) REFERENCES formats(F_ID)
                 );
             ''')
+
+            # 3. Таблица сессий сканирования
+            self.__mainCursor.execute('''
+            CREATE TABLE IF NOT EXISTS scan_sessions (
+                SS_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                SS_START_TIME DATETIME,
+                SS_END_TIME DATETIME,
+                SS_TYPE_SCAN TEXT,
+                SS_PATH TEXT,
+                SS_FILTER TEXT,
+                SS_FILES_SCANNED INTEGER,
+                SS_CNT_ADDED INTEGER,
+                SS_CNT_UPDATED INTEGER,
+                SS_CNT_DELETED INTEGER,
+                SS_STATUS TEXT
+                );
+            ''')
+
+            # 4. Таблица операций во время сканирования
+            self.__mainCursor.execute('''
+            CREATE TABLE IF NOT EXISTS scan_changes (
+                SC_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                SC_SESSION_ID INTEGER,
+                SC_FILE_NAME TEXT,
+                SC_FILE_PATH TEXT,
+                SC_HASH_SUM TEXT,
+                SC_OPERATION_TYPE TEXT,
+                SC_TIME_CHANGE DATETIME
+                );
+            ''')
+
             self.__flagInitDataBase = True
 
         self.__mainConnect.commit()

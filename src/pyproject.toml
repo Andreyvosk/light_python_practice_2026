@@ -7,5 +7,6 @@ files = ["main.py",
     "EngineScript/EngineScript.py",
     "EngineScript/FileClass.py",
     "TerminalApp/TerminalApp.py",
-    "EngineScript/LoadingAnimation.py"
+    "EngineScript/LoadingAnimation.py",
+    "HistoryManager/HistoryManager.py"
     ]
