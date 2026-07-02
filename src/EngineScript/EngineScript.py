@@ -147,6 +147,197 @@ class Engine:
             json.dump(self.__settings, f, indent=4, ensure_ascii=False)
 
 
+    def readAndSaveFileIndexes(self, path, format, historyManager=None):
+        startTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        print("=====Чтение файлов каталога=====")
+        self.__animation.start()
+        fileList = self.__readFiles(path)
+        self.__animation.stop()
+        print("успешно")
+
+        print("=====Создание классов файлов=====")
+        self.__animation.start()
+        fileInfo = self.__readInfoFiles(fileList, format)
+        self.__animation.stop()
+        print("успешно")
+
+        totalFiles = len(fileInfo)
+        cntAdded = 0
+        cntUpdated = 0
+        cntDeleted = 0
+
+        print("=====Добавление файлов в базу...======")
+        self.__animation.start()
+
+        # Создаем сессию сканирования
+        if historyManager:
+            historyManager.createSession(
+                startTime=startTime,
+                typeScan="FULL_SCAN",
+                pathScan=path,
+                filter=format if format else "",
+                cntFiles=totalFiles,
+                cntAdded=0,
+                cntUpdated=0,
+                cntDeleted=0,
+                status="IN_PROGRESS"
+            )
+
+        # Собираем пути всех файлов в сканируемой директории
+        scanned_paths = set()
+        for file in fileInfo:
+            scanned_paths.add(str(file.getFullName()))
+            file.display()
+            result = self.__dataBase.addNewFile(file, historyManager)
+
+            if result == 'ADDED':
+                cntAdded += 1
+            elif result == 'UPDATED':
+                cntUpdated += 1
+
+        # Удаляем дубликаты
+        deletedCount = self.__dataBase.removeDuplicates()
+        cntDeleted += deletedCount
+
+        # Находим и удаляем файлы, которых нет в сканируемой директории
+        print("\n=====Проверка удаленных файлов=====")
+        cursor = self.__dataBase.getCursor()
+
+        # Получаем все файлы из БД для текущего пути
+        # Используем LIKE для поиска файлов в этой директории
+        path_normalized = str(Path(path).resolve())
+
+        # Получаем список всех файлов из БД, которые находятся в сканируемой директории
+        cursor.execute(
+            "SELECT C_ID, C_FULL_NAME, C_FILE_NAME, C_HASH_SUM FROM files WHERE C_FULL_NAME LIKE ?",
+            (path_normalized + '%',)
+        )
+        db_files = cursor.fetchall()
+
+        # Находим файлы, которых нет в сканируемой директории
+        files_to_delete = []
+        for db_file in db_files:
+            db_id, db_full_name, db_file_name, db_hash = db_file
+            if db_full_name not in scanned_paths:
+                files_to_delete.append({
+                    'id': db_id,
+                    'full_name': db_full_name,
+                    'file_name': db_file_name,
+                    'hash': db_hash
+                })
+
+        # Удаляем найденные файлы из БД
+        if files_to_delete:
+            print(f"Найдено {len(files_to_delete)} файлов для удаления:")
+            for file_info in files_to_delete:
+                print(f"  🗑 Удален: {file_info['file_name']} ({file_info['full_name']})")
+
+                # Добавляем запись в историю об удалении
+                if historyManager:
+                    historyManager.addChangeRecord(
+                        fileName=file_info['file_name'],
+                        filePath=file_info['full_name'],
+                        fileHash=file_info['hash'] if file_info['hash'] else "UNKNOWN",
+                        operationType='DELETED',
+                        timeChange=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    )
+
+                # Удаляем файл из БД
+                cursor.execute("DELETE FROM files WHERE C_ID = ?", (file_info['id'],))
+
+            cntDeleted += len(files_to_delete)
+            self.__dataBase.getConnect().commit()
+            print(f"✅ Удалено из БД: {len(files_to_delete)} файлов")
+        else:
+            print("✅ Все файлы из БД присутствуют в директории")
+
+        self.__animation.stop()
+        print("успешно")
+
+        # Обновляем сессию с итоговыми данными
+        if historyManager:
+            sessionId = historyManager.getCurrentSessionId()
+            if sessionId:
+                updateSessionSql = '''UPDATE scan_sessions
+                SET SS_CNT_ADDED = ?, SS_CNT_UPDATED = ?, SS_CNT_DELETED = ?, SS_STATUS = ?
+                WHERE SS_ID = ?
+                '''
+                cursor.execute(updateSessionSql, (
+                    cntAdded, cntUpdated, cntDeleted, "COMPLETED", sessionId
+                ))
+                self.__dataBase.getConnect().commit()
+
+        print(f"\n📊 ИТОГИ СКАНИРОВАНИЯ:")
+        print(f"   ➕ Добавлено:   {cntAdded}")
+        print(f"   ✏️ Обновлено:   {cntUpdated}")
+        print(f"   🗑 Удалено:     {cntDeleted}")
+        print(f"   📄 Всего файлов: {totalFiles}")
+
+        ''' Функции для индексации '''
+        def readAndSaveFileIndexes(self, path, format, historyManager=None):
+            startTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            print("=====Чтение файлов каталога=====")
+            self.__animation.start()
+            fileList = self.__readFiles(path)
+            self.__animation.stop()
+
+            print("=====Создание классов файлов=====")
+            self.__animation.start()
+            fileInfo = self.__readInfoFiles(fileList, format)
+            self.__animation.stop()
+
+            totalFiles = len(fileInfo)
+            cntAdded = 0
+            cntUpdated = 0
+            cntDeleted = 0
+
+            print("=====Добавление файлов в базу...======")
+            self.__animation.start()
+
+            if historyManager:
+                historyManager.createSession(
+                    startTime=startTime,
+                    typeScan="FULL_SCAN",
+                    pathScan=path,
+                    filter=format,
+                    cntFiles=totalFiles,
+                    cntAdded=0,
+                    cntUpdated=0,
+                    cntDeleted=0,
+                    status="IN_PROGRESS"
+                )
+
+            for file in fileInfo:
+                file.display()
+                result = self.__dataBase.addNewFile(file, historyManager)
+
+                if result == 'ADDED':
+                    cntAdded += 1
+                elif result == 'UPDATED':
+                    cntUpdated += 1
+
+            deletedCount = self.__dataBase.removeDuplicates()
+            cntDeleted = deletedCount
+
+            self.__animation.stop()
+
+            if historyManager:
+                sessionId = historyManager.getCurrentSessionId()
+                updateSessionSql = '''UPDATE scan_sessions
+                SET SS_CNT_ADDED = ?, SS_CNT_UPDATED = ?, SS_CNT_DELETED = ?, SS_STATUS = ?
+                WHERE SS_ID = ?
+                '''
+                self.__dataBase.getCursor().execute(updateSessionSql, (
+                    cntAdded, cntUpdated, cntDeleted, "COMPLETED", sessionId
+                ))
+                self.__dataBase.getConnect().commit()
+
+            print(f"Добавлено: {cntAdded}, Обновлено: {cntUpdated}, Удалено: {cntDeleted}")
+
+
+
     def comparePaths(self, firstPath, secondPath, extension_filter, historyManager=None):
         p1 = Path(firstPath).resolve()
         p2 = Path(secondPath).resolve()
@@ -345,69 +536,6 @@ class Engine:
         print(f"   🗑 Удаленных файлов:   {cntDeleted}")
         print(f"   📊 Всего изменений:    {cntChanged + cntNew + cntDeleted}")
         print(f"{'='*60}")
-
-
-    ''' Функции для индексации '''
-    def readAndSaveFileIndexes(self, path, format, historyManager=None):
-        startTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-        print("=====Чтение файлов каталога=====")
-        self.__animation.start()
-        fileList = self.__readFiles(path)
-        self.__animation.stop()
-
-        print("=====Создание классов файлов=====")
-        self.__animation.start()
-        fileInfo = self.__readInfoFiles(fileList, format)
-        self.__animation.stop()
-
-        totalFiles = len(fileInfo)
-        cntAdded = 0
-        cntUpdated = 0
-        cntDeleted = 0
-
-        print("=====Добавление файлов в базу...======")
-        self.__animation.start()
-
-        if historyManager:
-            historyManager.createSession(
-                startTime=startTime,
-                typeScan="FULL_SCAN",
-                pathScan=path,
-                filter=format,
-                cntFiles=totalFiles,
-                cntAdded=0,
-                cntUpdated=0,
-                cntDeleted=0,
-                status="IN_PROGRESS"
-            )
-
-        for file in fileInfo:
-            file.display()
-            result = self.__dataBase.addNewFile(file, historyManager)
-
-            if result == 'ADDED':
-                cntAdded += 1
-            elif result == 'UPDATED':
-                cntUpdated += 1
-
-        deletedCount = self.__dataBase.removeDuplicates()
-        cntDeleted = deletedCount
-
-        self.__animation.stop()
-
-        if historyManager:
-            sessionId = historyManager.getCurrentSessionId()
-            updateSessionSql = '''UPDATE scan_sessions
-            SET SS_CNT_ADDED = ?, SS_CNT_UPDATED = ?, SS_CNT_DELETED = ?, SS_STATUS = ?
-            WHERE SS_ID = ?
-            '''
-            self.__dataBase.getCursor().execute(updateSessionSql, (
-                cntAdded, cntUpdated, cntDeleted, "COMPLETED", sessionId
-            ))
-            self.__dataBase.getConnect().commit()
-
-        print(f"Добавлено: {cntAdded}, Обновлено: {cntUpdated}, Удалено: {cntDeleted}")
 
 
 

@@ -126,7 +126,7 @@ class TerminalApp:
 
         if args.compare:
             firstDir, secondDir = args.compare
-            self.__mainEngine.comparePaths(firstDir, secondDir, filter)
+            self.__mainEngine.comparePaths(firstDir, secondDir, filter, self.__historyManager)
             flagStart = True
 
         if args.info:
