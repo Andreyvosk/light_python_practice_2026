@@ -110,28 +110,66 @@ class DataBase:
         return self.__mainCursor.fetchone()
 
 
+    def getConnect(self):
+        return self.__mainConnect
+
+
+    def getCursor(self):
+        return self.__mainCursor
+
+
     ''' Добавление данных в базу '''
-    def addNewFile(self, file):
+    def addNewFile(self, file, historyManager=None):
         if isinstance(file, fc.File):
-
-            sqlFormatText = "INSERT INTO files (C_FILE_NAME, C_FULL_NAME, C_CHANGE_DATE, C_CREATE_DATE, C_FORMAT_ID, C_HASH_SUM) VALUES (?, ?, ?, ?, ?, ?);"
-
             formatName = file.getExtension()
             filePath = file.getFullName()
             currentTimeString = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            fileHash = file.getHash()
+            fileName = file.getName()
 
-            #print(f"Файл: {file.getName()}\t|\tформат файла: {formatName}")
+            checkSql = "SELECT C_HASH_SUM, C_ID FROM files WHERE C_FULL_NAME = ?"
+            self.__mainCursor.execute(checkSql, (str(filePath),))
+            result = self.__mainCursor.fetchone()
 
-            fileFormat = self.__findFormatID(formatName, filePath)
+            operationType = None
+            #fileId = None
 
-            if fileFormat != -1:
-                self.__mainCursor.execute(sqlFormatText, (file.getName(), str(file.getFullName()), currentTimeString, currentTimeString, fileFormat, file.getHash()))
+            if result:
+                oldHash = result[0]
+                #fileId = result[1]
+
+                if oldHash != fileHash:
+                    updateSql = "UPDATE files SET C_CHANGE_DATE = ?, C_HASH_SUM = ? WHERE C_FULL_NAME = ?"
+                    self.__mainCursor.execute(updateSql, (currentTimeString, fileHash, str(filePath)))
+                    operationType = 'UPDATED'
+
+                else:
+                    return 'SKIPPED'
+
+            else:
+                fileFormat = self.__findFormatID(formatName, filePath)
+                if fileFormat != -1:
+                    sqlFormatText = "INSERT INTO files (C_FILE_NAME, C_FULL_NAME, C_CHANGE_DATE, C_CREATE_DATE, C_FORMAT_ID, C_HASH_SUM) VALUES (?, ?, ?, ?, ?, ?);"
+                    self.__mainCursor.execute(sqlFormatText, (fileName, str(filePath), currentTimeString, currentTimeString, fileFormat, fileHash))
+                    operationType = 'ADDED'
+                else:
+                    return 'ERROR'
 
             self.__mainConnect.commit()
 
-            return True
+            if historyManager and operationType:
+                historyManager.addChangeRecord(
+                fileName=fileName,
+                filePath=str(filePath),
+                fileHash=fileHash,
+                operationType=operationType,
+                timeChange=currentTimeString
+                )
+
+            return operationType  # Возвращаем тип операции
         else:
-            return False
+            return 'ERROR'
+
 
 
     def addNewFormat(self, formatName, filePath):

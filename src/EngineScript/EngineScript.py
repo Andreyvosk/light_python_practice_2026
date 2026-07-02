@@ -147,9 +147,11 @@ class Engine:
             json.dump(self.__settings, f, indent=4, ensure_ascii=False)
 
 
-    def comparePaths(self, firstPath, secondPath, extension_filter):
+    def comparePaths(self, firstPath, secondPath, extension_filter, historyManager=None):
         p1 = Path(firstPath).resolve()
         p2 = Path(secondPath).resolve()
+
+        startTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         print(f"Путь: {p1} - основной | Путь сравнения: {p2}")
 
@@ -168,6 +170,7 @@ class Engine:
                 return file_list
             return [f for f in file_list if f.suffix.lower() == ext_filter]
 
+        print("=====Чтение файлов директорий=====")
         firstFileList = self.__readFiles(p1)
         secondFileList = self.__readFiles(p2)
 
@@ -177,8 +180,32 @@ class Engine:
         if ext:
             print(f"Фильтр по расширению: {ext}")
 
-        matched_in_second = []
+                # Статистика для истории
+        cntChanged = 0      # Измененные файлы (хэш отличается)
+        cntNew = 0          # Новые файлы (есть в первой, нет во второй)
+        cntDeleted = 0      # Удаленные файлы (есть во второй, нет в первой)
+        cntIdentical = 0    # Идентичные файлы
 
+                # Создаем сессию сравнения
+        if historyManager:
+            sessionId = historyManager.createSession(
+                startTime=startTime,
+                typeScan="COMPARE",
+                pathScan=f"{p1} ↔ {p2}",
+                filter=ext if ext else "",
+                cntFiles=len(firstFileList) + len(secondFileList),
+                cntAdded=0,
+                cntUpdated=0,
+                cntDeleted=0,
+                status="IN_PROGRESS"
+            )
+
+        matched_in_second = []
+        changes = []  # Список изменений для записи в историю
+
+        print("=====Сравнение файлов=====")
+
+                # Сравниваем файлы из первой директории
         for file in firstFileList:
             try:
                 relFirst = file.relative_to(p1)
@@ -203,12 +230,30 @@ class Engine:
                 if relFirst == relSecond:
                     if firstHash != secHash:
                         print(f"[Изменен] Файл: {relFirst}")
+                        cntChanged += 1
+                        changes.append({
+                            'file_name': file.name,
+                            'file_path': str(relFirst),
+                            'hash': secHash,
+                            'operation': 'UPDATED',
+                            'details': f"Хэш изменен: {firstHash[:8]}... → {secHash[:8]}..."
+                        })
+                    else:
+                        cntIdentical += 1
+                        changes.append({
+                            'file_name': file.name,
+                            'file_path': str(relFirst),
+                            'hash': firstHash,
+                            'operation': 'IDENTICAL',
+                            'details': "Файл не изменился"
+                        })
 
                     matched = True
                     matched_in_second.append(secFile)
                     break
 
             if not matched:
+                    # Ищем файл с таким же хэшем во второй директории
                 for secFile in secondFileList:
                     if secFile in matched_in_second:
                         continue
@@ -223,18 +268,88 @@ class Engine:
 
             if not matched:
                 print(f"[Новый (есть в первой, нет во второй)] Файл: {file.name} ({relFirst})")
+                cntNew += 1
+                changes.append({
+                    'file_name': file.name,
+                    'file_path': str(relFirst),
+                    'hash': firstHash,
+                    'operation': 'ADDED',
+                    'details': "Файл отсутствует во второй директории"
+                })
 
+                # Проверяем файлы, которые есть во второй директории, но нет в первой
         for secFile in secondFileList:
             if secFile not in matched_in_second:
                 try:
                     rel = secFile.relative_to(p2)
                     print(f"[Удален (есть во второй, нет в первой)] Файл: {rel}")
+                    cntDeleted += 1
+                    secHash = self.__getFileSha256(secFile)
+                    changes.append({
+                        'file_name': secFile.name,
+                        'file_path': str(rel),
+                        'hash': secHash if secHash else "N/A",
+                        'operation': 'DELETED',
+                        'details': "Файл отсутствует в первой директории"
+                    })
                 except ValueError:
                     print(f"[Удален] Файл: {secFile.name}")
+                    cntDeleted += 1
+                    changes.append({
+                        'file_name': secFile.name,
+                        'file_path': str(secFile),
+                        'hash': "N/A",
+                        'operation': 'DELETED',
+                        'details': "Файл отсутствует в первой директории"
+                        })
+
+                # Записываем изменения в историю
+        if historyManager and changes:
+            for change in changes:
+                        # Пропускаем IDENTICAL, если не хотим их записывать
+                if change['operation'] == 'IDENTICAL':
+                    continue
+
+                        # Для UPDATED используем хэш из второй директории
+                hash_to_save = change['hash'] if change['hash'] != "N/A" else "UNKNOWN"
+
+                historyManager.addChangeRecord(
+                    fileName=change['file_name'],
+                    filePath=change['file_path'],
+                    fileHash=hash_to_save,
+                    operationType=change['operation'],
+                    timeChange=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                )
+
+            # Обновляем сессию с итоговыми данными
+        if historyManager:
+            sessionId = historyManager.getCurrentSessionId()
+            if sessionId:
+                updateSessionSql = '''UPDATE scan_sessions
+                SET SS_CNT_ADDED = ?, SS_CNT_UPDATED = ?, SS_CNT_DELETED = ?, SS_STATUS = ?
+                WHERE SS_ID = ?
+                '''
+                cursor = self.__dataBase.getCursor()
+                cursor.execute(updateSessionSql, (
+                    cntNew, cntChanged, cntDeleted, "COMPLETED", sessionId
+                ))
+                self.__dataBase.getConnect().commit()
+
+                # Выводим итоговую статистику
+        print(f"\n{'='*60}")
+        print(f"📊 ИТОГИ СРАВНЕНИЯ:")
+        print(f"{'='*60}")
+        print(f"   📄 Идентичных файлов:  {cntIdentical}")
+        print(f"   ✏️ Измененных файлов:  {cntChanged}")
+        print(f"   ➕ Новых файлов:       {cntNew}")
+        print(f"   🗑 Удаленных файлов:   {cntDeleted}")
+        print(f"   📊 Всего изменений:    {cntChanged + cntNew + cntDeleted}")
+        print(f"{'='*60}")
 
 
     ''' Функции для индексации '''
-    def readAndSaveFileIndexes(self, path, format):
+    def readAndSaveFileIndexes(self, path, format, historyManager=None):
+        startTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         print("=====Чтение файлов каталога=====")
         self.__animation.start()
@@ -246,14 +361,53 @@ class Engine:
         fileInfo = self.__readInfoFiles(fileList, format)
         self.__animation.stop()
 
+        totalFiles = len(fileInfo)
+        cntAdded = 0
+        cntUpdated = 0
+        cntDeleted = 0
+
         print("=====Добавление файлов в базу...======")
         self.__animation.start()
+
+        if historyManager:
+            historyManager.createSession(
+                startTime=startTime,
+                typeScan="FULL_SCAN",
+                pathScan=path,
+                filter=format,
+                cntFiles=totalFiles,
+                cntAdded=0,
+                cntUpdated=0,
+                cntDeleted=0,
+                status="IN_PROGRESS"
+            )
+
         for file in fileInfo:
             file.display()
-            self.__dataBase.addNewFile(file)
-        self.__dataBase.removeDuplicates()
+            result = self.__dataBase.addNewFile(file, historyManager)
+
+            if result == 'ADDED':
+                cntAdded += 1
+            elif result == 'UPDATED':
+                cntUpdated += 1
+
+        deletedCount = self.__dataBase.removeDuplicates()
+        cntDeleted = deletedCount
+
         self.__animation.stop()
 
+        if historyManager:
+            sessionId = historyManager.getCurrentSessionId()
+            updateSessionSql = '''UPDATE scan_sessions
+            SET SS_CNT_ADDED = ?, SS_CNT_UPDATED = ?, SS_CNT_DELETED = ?, SS_STATUS = ?
+            WHERE SS_ID = ?
+            '''
+            self.__dataBase.getCursor().execute(updateSessionSql, (
+                cntAdded, cntUpdated, cntDeleted, "COMPLETED", sessionId
+            ))
+            self.__dataBase.getConnect().commit()
+
+        print(f"Добавлено: {cntAdded}, Обновлено: {cntUpdated}, Удалено: {cntDeleted}")
 
 
 

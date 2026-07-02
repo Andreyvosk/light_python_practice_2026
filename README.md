@@ -87,6 +87,21 @@ python TerminalApp.py --info
     "batchSize": 500
 }
 
+### -l, -s статистика
+
+# Запустите сканирование
+python main.py -d /home/andrey/Documents/infobase14/
+
+# Теперь должны увидеть историю
+python main.py -l 5
+
+# Или конкретную сессию
+python main.py -s 1
+
+# Или статистику
+python main.py -stats
+
+
 ## Как это работает
 
 ### Процесс сканирования и индексации
