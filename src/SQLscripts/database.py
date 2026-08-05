@@ -9,6 +9,12 @@ class DataBase:
 
         CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+        # Константы для операций
+        self.__OP_RENAME = "Переименован"
+        self.__OP_DELETE = "Удален"
+        self.__OP_CHANGE = "Изменен"
+        self.__OP_INSERT = "Добавлен"
+
         self.__catalogDataBase = os.path.join(CURRENT_DIR, catalogData)
 
         self.__mainConnect = sqlite3.connect(self.__catalogDataBase)
@@ -33,7 +39,7 @@ class DataBase:
 
             # 2. Таблица индексов файлов
             self.__mainCursor.execute('''
-            CREATE TABLE IF NOT EXISTS files (
+            CREATE TABLE IF NOT EXISTS currentFiles (
                 C_ID INTEGER PRIMARY KEY AUTOINCREMENT,
                 C_FILE_NAME TEXT NOT NULL,
                 C_FULL_NAME TEXT NOT NULL,
@@ -45,39 +51,36 @@ class DataBase:
                 );
             ''')
 
-            # 3. Таблица сессий сканирования
+            # 3. Таблица историй операций с файлами
             self.__mainCursor.execute('''
-            CREATE TABLE IF NOT EXISTS scan_sessions (
-                SS_ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                SS_START_TIME DATETIME,
-                SS_END_TIME DATETIME,
-                SS_TYPE_SCAN TEXT,
-                SS_PATH TEXT,
-                SS_FILTER TEXT,
-                SS_FILES_SCANNED INTEGER,
-                SS_CNT_ADDED INTEGER,
-                SS_CNT_UPDATED INTEGER,
-                SS_CNT_DELETED INTEGER,
-                SS_STATUS TEXT
+            CREATE TABLE IF NOT EXISTS operationHistory (
+                OH_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                OH_OPERATION_TIME DATETIME NOT NULL,
+                OH_FILE_ID INTEGER NOT NULL,
+                FOREIGN KEY (OH_FILE_ID) REFERENCES currentFiles(C_ID),
+                OH_OPERATION_ID INTEGER NOT NULL,
+                FOREIGN KEY (OH_OPERATION_ID) REFERENCES completeOperation(CO_ID),
+                OH_INFO_CHANGE VARCHAR(64),
+                OH_HASH VARCHAR(64),
+                OH_FILE_NAME VARCHAR(255)
                 );
             ''')
 
-            # 4. Таблица операций во время сканирования
+            # 4. Таблица выполненных операций
             self.__mainCursor.execute('''
-            CREATE TABLE IF NOT EXISTS scan_changes (
-                SC_ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                SC_SESSION_ID INTEGER,
-                SC_FILE_NAME TEXT,
-                SC_FILE_PATH TEXT,
-                SC_HASH_SUM TEXT,
-                SC_OPERATION_TYPE TEXT,
-                SC_TIME_CHANGE DATETIME
-                );
+            CREATE TABLE IF NOT EXISTS completeOperation (
+                CO_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                CO_OPERATION_NAME VARCHAR(64) NOT NULL, 
+                CO_START_TIME DATETIME NOT NULL,
+                CO_END_TIME DATETIME NOT NULL
+            );
             ''')
 
             self.__flagInitDataBase = True
 
         self.__mainConnect.commit()
+        
+        self.__idOperationCounter = self.__getCounterID()
 
 
     def __del__(self):
@@ -90,17 +93,6 @@ class DataBase:
         return self.__catalogDataBase
 
 
-    def getLastAddFile(self):
-        self.__mainCursor.execute('''
-            SELECT C_ID, C_FILE_NAME, C_CREATE_DATE
-            FROM files
-            ORDER BY C_CHANGE_DATE DESC
-            LIMIT 1;
-        ''')
-
-        return self.__mainCursor.fetchone()
-
-
     def getAllExtension(self):
 
         sqlRequestText = "SELECT * FROM formats"
@@ -110,69 +102,15 @@ class DataBase:
         return self.__mainCursor.fetchone()
 
 
-    def getConnect(self):
-        return self.__mainConnect
-
-
-    def getCursor(self):
-        return self.__mainCursor
-
-
     ''' Добавление данных в базу '''
-    def addNewFile(self, file, historyManager=None):
-        if isinstance(file, fc.File):
-            formatName = file.getExtension()
-            filePath = file.getFullName()
-            currentTimeString = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            fileHash = file.getHash()
-            fileName = file.getName()
-
-            checkSql = "SELECT C_HASH_SUM, C_ID FROM files WHERE C_FULL_NAME = ?"
-            self.__mainCursor.execute(checkSql, (str(filePath),))
-            result = self.__mainCursor.fetchone()
-
-            operationType = None
-            #fileId = None
-
-            if result:
-                oldHash = result[0]
-                #fileId = result[1]
-
-                if oldHash != fileHash:
-                    updateSql = "UPDATE files SET C_CHANGE_DATE = ?, C_HASH_SUM = ? WHERE C_FULL_NAME = ?"
-                    self.__mainCursor.execute(updateSql, (currentTimeString, fileHash, str(filePath)))
-                    operationType = 'UPDATED'
-
-                else:
-                    return 'SKIPPED'
-
-            else:
-                fileFormat = self.__findFormatID(formatName, filePath)
-                if fileFormat != -1:
-                    sqlFormatText = "INSERT INTO files (C_FILE_NAME, C_FULL_NAME, C_CHANGE_DATE, C_CREATE_DATE, C_FORMAT_ID, C_HASH_SUM) VALUES (?, ?, ?, ?, ?, ?);"
-                    self.__mainCursor.execute(sqlFormatText, (fileName, str(filePath), currentTimeString, currentTimeString, fileFormat, fileHash))
-                    operationType = 'ADDED'
-                else:
-                    return 'ERROR'
-
-            self.__mainConnect.commit()
-
-            if historyManager and operationType:
-                historyManager.addChangeRecord(
-                fileName=fileName,
-                filePath=str(filePath),
-                fileHash=fileHash,
-                operationType=operationType,
-                timeChange=currentTimeString
-                )
-
-            return operationType  # Возвращаем тип операции
-        else:
-            return 'ERROR'
+    def parseFiles(self, fileList):
+        for file in fileList:
+            if self.__findAndUpdateFileInBase(file) == False:
+                self.__addNewFileInBase(file)
+        #ЗДЕСЬ СОЗДАЕМ СЕССИЮ И МЕНЯЕМ СЧЕТЧИК ID -------- нужно доделать
 
 
-
-    def addNewFormat(self, formatName, filePath):
+    def __addNewFormat(self, formatName, filePath):
         sqlFormatText = "INSERT INTO formats (F_NAME, F_ISBINARY) VALUES (?, ?);"
 
         self.__mainCursor.execute(sqlFormatText, (formatName, self.__isBinaryFile(filePath)))
@@ -196,24 +134,57 @@ class DataBase:
 
         else:
             return -1
+        
 
+    def __findAndUpdateFileInBase(self, file):
+        fileFullName = file.getFullName()
+        fileHash = file.getHash()
 
-    def requestAllFiles(self):
-        sqlRequest = "SELECT f.*, fm.F_NAME, fm.F_ISBINARY FROM files f LEFT JOIN formats fm ON f.C_FORMAT_ID = fm.F_ID;"
-        self.__mainCursor.execute(sqlRequest)
+        requestForName = '''SELECT 
+                                C_ID,
+                                C_FILE_NAME,
+                                C_FULL_NAME,
+                                C_HASH_SUM
+                            FROM 
+                                currentFiles
+                            WHERE 
+                                C_FULL_NAME = ?
+                            LIMIT 1;
+                         '''
 
-        result = self.__mainCursor.fetchall()
+        requestForHash = '''SELECT 
+                                C_ID,
+                                C_FILE_NAME,
+                                C_FULL_NAME,
+                                C_HASH_SUM
+                            FROM
+                                currentFiles
+                            WHERE
+                                C_HASH_SUM = ?
+                            LIMIT 1;
+                         '''
+        
+        self.__mainCursor.execute(requestForName, (fileFullName))
+        resultFindName = self.__mainCursor.fetchone()
 
-        return result
+        self.__mainCursor.execute(requestForHash, (fileHash))
+        resultFindHash = self.__mainCursor.fetchone()
 
-
-    def __deleteFile(self, hashToDelete):
-        sqlDelete = "DELETE FROM files WHERE C_HASH_SUM = ?"
-
-        self.__mainCursor.execute(sqlDelete, (hashToDelete,))
-
-        self.__mainConnect.commit()
-
+        if resultFindName != None:
+            if resultFindName[3] == fileHash:
+                return True
+            else: 
+                self.__changeFile(self.__OP_CHANGE, file, resultFindName[0])
+                return True
+        elif resultFindHash != None:
+            if resultFindHash[2] == fileFullName:
+                return True
+            else:
+                self.__changeFile(self.__OP_RENAME, file, resultFindHash[0])
+                return True
+        else:
+            return False
+                
 
     ''' Вспомогательные функции '''
     def __isBinaryFile(self, filePath):
@@ -232,107 +203,64 @@ class DataBase:
             return False
 
 
-    def __findFilesInBase(self, fileList):
-        if not fileList:
-            return []
+    def __addOperationInBase(self, fileID, typeOperation, file):
+        fileHash = file.getHash
+        fileName = file.getName
+        fileFullName = file.getFullName
+        operationTime = datetime.now()
+        operationId = self.__idOperationCounter
 
-        batchList = [file.getHash() for file in fileList]
-        placeholders = ",".join(["?"] * len(fileList))
-
-        sqlRequestText = (
-            f"SELECT C_HASH_SUM FROM files WHERE C_HASH_SUM IN ({placeholders})"
-        )
-
-        self.__mainCursor.execute(sqlRequestText, batchList)
-        rows = self.__mainCursor.fetchall()
-
-        existing_hashes = {row[0] for row in rows}
-
-        resultList = []
-
-        for file in fileList:
-            if file.getHash() not in existing_hashes:
-                resultList.append(file)
-
-        return resultList
+        sqlText = '''INSERT INTO operationHistory (OH_OPERATION_TIME, OH_FILE_ID, OH_OPERATION_ID, OH_INFO_CHANGE, OH_HASH, OH_FILE_NAME)
+                     VALUES (?, ?, ?, ?, ?, ?)
+                  '''
+        self.__mainCursor.execute(sqlText, (operationTime, fileID, operationId, typeOperation, fileHash, fileName))
+        self.__mainConnect.commit()
 
 
-    def findFiles(self, fileList):
-        resultFileList = []
+    def __changeFile(self, statusFile, file, idFile):
+        updateText = '''UPDATE 
+                            currentFiles
+                        SET 
+                            C_FULL_NAME = ?,
+                            C_HASH_SUM = ?,
+                            C_FILE_NAME = ?,
+                            C_CHANGE_DATE = ?
+                        WHERE 
+                            C_ID = ?
+                     '''
+        
+        nowTime = datetime.now()
+        self.__mainCursor.execute(updateText, (file.getFullName(), file.getHash(), file.getName(), nowTime, idFile))
+        self.__mainConnect.commit()
 
-        for i in range(len(fileList)):
-            currentList = fileList[i]
-            resultFileList.extend(self.__findFilesInBase(currentList))
-
-        return resultFileList
+        self.__addOperationInBase(idFile, statusFile, file)
 
 
-    def findFile(self, fileName):
-        requsetText = "SELECT C_FULL_NAME FROM files WHERE C_FILE_NAME = fileName"
+    def __getCounterID(self):
+        self.__mainCursor.execute("SELECT CO_ID FROM completeOperation ORDER BY CO_ID DESC LIMIT 1 ")
 
-        self.__mainCursor.execute(requsetText, fileName)
-        return self.__mainCursor.fetchall()
-
-
-    def removeDuplicates(self):
-
-        try:
-
-            sql_delete_by_hash = '''
-            DELETE FROM files
-            WHERE C_ID NOT IN (
-                SELECT MIN(C_ID)
-                FROM files
-                GROUP BY C_HASH_SUM
-            );
-            '''
-            self.__mainCursor.execute(sql_delete_by_hash)
-            deleted_hashes = self.__mainCursor.rowcount
-
-            sql_delete_by_name = '''
-            DELETE FROM files
-            WHERE C_ID NOT IN (
-                SELECT MIN(C_ID)
-                FROM files
-                GROUP BY C_FILE_NAME
-            );
-            '''
-            self.__mainCursor.execute(sql_delete_by_name)
-            deleted_names = self.__mainCursor.rowcount
-
-            self.__mainConnect.commit()
-
-            return deleted_hashes + deleted_names
-
-        except sqlite3.Error as e:
-            print(f"Ошибка при удалении дубликатов: {e}")
-            self.__mainConnect.rollback() # Откатываем изменения в случае сбоя
+        lastID = self.__mainCursor.fetchone()
+        
+        if lastID is None:
             return 0
+        return lastID
+
+    
+    def __upIDCounter(self):
+        self.__idOperationCounter += 1
 
 
-    def createBackup(self, backup_dir="backups"):
-        if not os.path.exists(backup_dir):
-            os.makedirs(backup_dir)
+    def __addNewFileInBase(self, file):
+        sqlText = '''INSERT INTO (C_FILE_NAME, C_FULL_NAME, C_CHANGE_DATE, C_CREATE_DATE, C_FORMAT_ID, C_HASH_SUM)
+                     VALUES (?, ?, ?, ?, ?, ?)
+                  '''
 
-        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        backup_filename = f"backup_indexer_{timestamp}.db"
-        backup_path = os.path.join(backup_dir, backup_filename)
+        nowTime = datetime.now()
 
-        try:
-            backup_connect = sqlite3.connect(backup_path)
-
-            with backup_connect:
-                self.__mainConnect.backup(backup_connect)
-
-            backup_connect.close()
-            print(f"[Бэкап] База данных успешно скопирована в: {backup_path}")
-            return backup_path
-        except sqlite3.Error as e:
-            print(f"[Бэкап] Ошибка при создании копии: {e}")
-            return None
-
-
-
+        self.__mainCursor.execute(sqlText, (file.getName(), file.getFullName(), nowTime, nowTime, self.__findFormatID(file.getExtension(), file.getFullName()), file.getHash()))
+        idFile = self.__mainCursor.lastrowid
+        self.__addOperationInBase(idFile, self.__OP_INSERT, file)
+        self.__mainConnect.commit()
 
 
 
