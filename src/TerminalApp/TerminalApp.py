@@ -1,6 +1,5 @@
 import EngineScript.EngineScript as es
 import SQLscripts.database as db
-import HistoryManager.HistoryManager as hm
 import argparse
 from datetime import datetime
 

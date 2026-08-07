@@ -1,3 +1,4 @@
+from ast import _EndPositionT
 import sqlite3
 from datetime import datetime
 import os
@@ -16,6 +17,7 @@ class DataBase:
         self.__OP_INSERT = "Добавлен"
 
         self.__catalogDataBase = os.path.join(CURRENT_DIR, catalogData)
+        self.__dumpFile = os.path.join(CURRENT_DIR, "log.txt")
 
         self.__mainConnect = sqlite3.connect(self.__catalogDataBase)
 
@@ -103,11 +105,23 @@ class DataBase:
 
 
     ''' Добавление данных в базу '''
-    def parseFiles(self, fileList):
+    def parseFiles(self, fileList, typeSession):
+        startTime = datetime.now()
+
         for file in fileList:
             if self.__findAndUpdateFileInBase(file) == False:
                 self.__addNewFileInBase(file)
-        #ЗДЕСЬ СОЗДАЕМ СЕССИЮ И МЕНЯЕМ СЧЕТЧИК ID -------- нужно доделать
+        # Записываем сессию сканирования
+        sessionID = self.__idOperationCounter
+        name = typeSession
+        endTime = datetime.now()
+
+        sqlText = '''INSERT INTO completeOperation (CO_ID, CO_OPERATION_NAME, CO_START_TIME, CO_END_TIME)
+                     VALUES (?, ?, ?, ?)
+                  '''
+
+        self.__mainCursor.execute(sqlText, (sessionID, name, startTime, endTime))
+        self.__upIDCounter()
 
 
     def __addNewFormat(self, formatName, filePath):
@@ -263,6 +277,12 @@ class DataBase:
         self.__mainConnect.commit()
 
 
+    def __dump(self, text):
+        try:
+            with open(self.__dumpFile, "w", encoding="utf-8") as f:
+                f.write(text)
+        except:
+            print("Файл дампа отсутсвует")
 
 
 

@@ -5,7 +5,6 @@ import hashlib
 from pathlib import Path
 from datetime import datetime
 import EngineScript.FileClass as fc
-import EngineScript.LoadingAnimation as la
 
 
 class Engine:
