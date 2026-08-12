@@ -22,7 +22,7 @@ class File:
 
 
     def getFullName(self):
-        return self.__fullName
+        return str(self.__fullName)
 
 
     def getSize(self):

@@ -19,8 +19,6 @@ class Engine:
 
         self.__cashSearchFiles = []
 
-        self.__animation = la.LoadingAnimation()
-
         self.__CONFIG_FILE_NAME = "config.json"
         self.__DEFAULT_CONFIG = {
             "countStarts": 0,
@@ -52,6 +50,13 @@ class Engine:
     def getCashSearchFiles(self):
         return self.__cashSearchFiles
 
+    
+    def getSizechunck(self):
+        sizeChunck = self.__settings.get("batchSize")
+        if sizeChunck != None:
+            return sizeChunck
+        print("Файл настроек поврежден")
+        return
 
     ''' setters '''
     def setWorkPath(self, workPath):
@@ -97,19 +102,8 @@ class Engine:
 
             if extension == format or format == "":
                 fileListData.append(currentFile)
-            #print("\033[K", end="")
 
-        fileListForFind = [fileListData[i : i + self.__settings["batchSize"]] for i in range(0, len(fileListData), self.__settings["batchSize"])]
-
-        return self.__dataBase.findFiles(fileListForFind)
-
-
-    def __saveFilesInBase(self, fileList):
-        for file in fileList:
-            if(self.__dataBase.addFile(file)):
-                print(f"Файл: {file.getName} \t успешно добавлен в систему")
-            else:
-                print(f"!!Файл: {file.getName} \t НЕ ДОБАВЛЕН")
+        return fileListData
 
 
     def __createConfig(self):
@@ -146,21 +140,32 @@ class Engine:
             json.dump(self.__settings, f, indent=4, ensure_ascii=False)
 
 
-    def readAndSaveFileIndexes(self, path, format, historyManager=None):
-        startTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    def __addFileInDatabase(self, fileInfo):
+        sizeChunk = self.getSizechunck()
+        filePackeges = [fileInfo[i:i + sizeChunk] for i in range(0, len(fileInfo), sizeChunk)]
+
+        print(f"Всего файлов добавляется в базу: {len(fileInfo)} | Разбиты на {len(filePackeges)} пакетов")
+        countAddPackege = 0
+
+        for pack in filePackeges:
+            if self.__dataBase.parseFiles(pack, "Сканирование"):
+                countAddPackege += 1
+
+        print(f"Успешно обработано: {countAddPackege} пакетов")
+  
+
+    def readAndSaveFileIndexes(self, path, format=""):
 
         print("=====Чтение файлов каталога=====")
         fileList = self.__readFiles(path)
-        self.__animation.stop()
         print("успешно")
 
         print("=====Создание классов файлов=====")
-        self.__animation.start()
         fileInfo = self.__readInfoFiles(fileList, format)
-        self.__animation.stop()
         print("успешно")
 
         print("=====Добавление файлов в базу...======")
-        self.__animation.start()
+        self.__addFileInDatabase(fileInfo)
+
 
 

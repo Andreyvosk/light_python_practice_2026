@@ -8,3 +8,5 @@ indexer.db
 config.json
 */backups/*
 .vs/*
+log.txt
+
