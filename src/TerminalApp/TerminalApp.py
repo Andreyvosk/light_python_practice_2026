@@ -88,6 +88,16 @@ class TerminalApp:
     def start(self):
         args = self.__parser.parse_args()
         direct = args.dir_path
+        info = args.info
+        statFlag = args.statistics
+
+        if info:
+            self.__mainEngine.showAllFilesInDataBase()
+            return
+
+        if statFlag:
+            self.__mainEngine.showAllOperation()
+            return
 
         self.__mainEngine.readAndSaveFileIndexes(direct)
         

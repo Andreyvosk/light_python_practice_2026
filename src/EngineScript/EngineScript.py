@@ -167,5 +167,20 @@ class Engine:
         print("=====Добавление файлов в базу...======")
         self.__addFileInDatabase(fileInfo)
 
+    
+    def showAllFilesInDataBase(self):
+
+        print("=====Список актуальных файлов базы данных=====")
+        self.__dataBase.displayAllFiles()
+
+        timeLastSession = self.__dataBase.getLastSession()
+        print(f"Последняя сессия сканирования была: {timeLastSession}")
+
+
+    def showAllOperation(self):
+
+        print("=====Список всех операций=====")
+        self.__dataBase.displayAllOperation()
+
 
 

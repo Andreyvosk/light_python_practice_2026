@@ -102,6 +102,14 @@ class DataBase:
         return self.__mainCursor.fetchone()
 
 
+    def getLastSession(self): 
+        sqlText = "SELECT CO_END_TIME FROM completeOperation ORDER BY CO_ID DESC LIMIT 1"
+
+        self.__mainCursor.execute(sqlText)
+
+        return self.__mainCursor.fetchone()[0]
+
+
     ''' displayses '''
     def displayAllFiles(self):
         sqlRequest = "SELECT * FROM currentFiles"
@@ -113,6 +121,19 @@ class DataBase:
             for element in row:
                 print(f"{element} ", end="")
             print()
+
+
+    def displayAllOperation(self):
+        sqlText = "SELECT * FROM operationHistory"
+
+        self.__mainCursor.execute(sqlText)
+        resultRequest = self.__mainCursor.fetchall()
+
+        for row in resultRequest:
+            for element in row:
+                print(f"{element} ", end="")
+            print()
+
 
     ''' Добавление данных в базу '''
     def parseFiles(self, fileList, typeSession):
